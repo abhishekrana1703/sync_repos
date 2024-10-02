@@ -27,7 +27,7 @@ jobs:
           python sync_repos.py
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
     
       - name: Upload Logs
         if: always()  # Ensure logs are uploaded even if the sync fails
