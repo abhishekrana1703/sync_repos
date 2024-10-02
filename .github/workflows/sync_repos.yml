@@ -1,0 +1,39 @@
+name: Repository Sync Job
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"  # Runs every 6 hours
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  sync_repos:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        
+      - name: Set Up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+
+      - name: Run Repository Sync Script
+        run: |
+          python sync_repos.py
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+      - name: Upload Logs
+        if: always()  # Ensure logs are uploaded even if the sync fails
+        uses: actions/upload-artifact@v3
+        with:
+          name: sync-logs
+          path: |
+            *.log       # Upload all log files
+            failed_repos.txt  # Upload the failed repositories file if it exists
