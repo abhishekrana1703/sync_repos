@@ -6,8 +6,8 @@ import logging
 from datetime import datetime
 
 # GitLab and GitHub tokens for authentication
-GITLAB_TOKEN = 'your_gitlab_token'  # Replace with your actual GitLab token
-GITHUB_TOKEN = 'your_github_token'  # Replace with your actual GitHub token
+GITLAB_TOKEN = 'your_gitlab_token'
+GITHUB_TOKEN = os.getenv('GH_TOKEN')
 
 # File containing GitLab and GitHub repository pairs
 REPO_FILE = 'repos.txt'  # The file should have lines of GitLab and GitHub repository URLs separated by commas
