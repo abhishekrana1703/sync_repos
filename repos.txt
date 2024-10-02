@@ -1,1 +1,2 @@
-https://gitlab.com/abhishekxrana/jenkins.git,https://github.com/abhishekrana1703/jenkins.git
+gitlab.com/abhishekxrana/repo2.git,github.com/abhishekrana1703/repo2.git
+gitlab.com/abhishekxrana/repo1.git,github.com/abhishekrana1703/repo1.git
