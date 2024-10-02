@@ -3,9 +3,9 @@ import subprocess
 import concurrent.futures
 import time
 
-# GitLab and GitHub tokens for authentication
-GITLAB_TOKEN = os.getenv('GITLAB_TOKEN')  # GitLab token should be passed as environment variable
-GITHUB_TOKEN = os.getenv('GH_TOKEN')  # GitHub token should be passed as environment variable
+# Hardcoded GitLab and GitHub tokens
+GITLAB_TOKEN = "glpat-o2rV5ywVfSLMcvSSqEsx"  # Hardcoded GitLab token
+GITHUB_TOKEN = "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"  # Hardcoded GitHub token
 
 # File containing GitLab and GitHub repository pairs
 REPO_FILE = 'repos.txt'
@@ -36,7 +36,7 @@ def sync_repo(gitlab_url, github_url, attempt=1):
 
         os.chdir(repo_name)
 
-        # Modify GitHub URL to include the GitHub token for authentication
+        # Modify GitHub URL to include the hardcoded GitHub token for authentication
         github_url_with_token = github_url.replace(
             'https://github.com', f'https://{GITHUB_TOKEN}:x-oauth-basic@github.com'
         )
