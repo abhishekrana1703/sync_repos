@@ -1,67 +1,72 @@
-import os
-import subprocess
-import time
+import os  # Import the os module for operating system-related functionality
+import subprocess  # Import the subprocess module to execute shell commands
+import sys  # Import the sys module for system-specific parameters and functions
 
-# Hardcoded tokens
-GITLAB_TOKEN = "glpat-o2rV5ywVfSLMcvSSqEsx"  # Your GitLab token
-GITHUB_TOKEN = "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"  # Your GitHub token
+# Set GitLab and GitHub tokens
+GITLAB_TOKEN = "glpat-o2rV5ywVfSLMcvSSqEsx"  # Token for GitLab authentication
+GH_TOKEN = "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"  # Token for GitHub authentication
 
-# File containing repository URLs
-REPO_FILE = 'repos.txt'
-FAILED_REPOS_FILE = 'failed_repos.txt'
+# Working directory to clone the repositories
+WORK_DIR = "/tmp/sync_repos"  # Directory where repositories will be cloned
 
-
-def sync_repository(gitlab_url, github_url):
-    """Sync a single repository from GitLab to GitHub."""
-    repo_name = github_url.split('/')[-1]
-    print(f'Cloning {repo_name} from GitLab...')
-
-    # Construct GitLab and GitHub URLs with tokens for authentication
-    gitlab_clone_url = f'https://oauth2:{GITLAB_TOKEN}@{gitlab_url.split("https://")[1]}'
-    github_clone_url = f'https://{GITHUB_TOKEN}:x-oauth-basic@{github_url}'
-
-    # Clone the repository from GitLab
+def run_command(command):
+    """Run a shell command and return the output."""
+    print(f"Running command: {' '.join(command)}")  # Print the command being run
     try:
-        subprocess.run(['git', 'clone', gitlab_clone_url, repo_name], check=True)
-        print(f'Fetching from GitLab and pushing to GitHub for {repo_name}...')
+        # Execute the command, capturing standard output and errors
+        result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return result.stdout  # Return the standard output from the command
+    except subprocess.CalledProcessError as e:
+        # Handle errors in command execution
+        print(f"Command failed: {e.cmd}")  # Print the command that failed
+        print(f"Error: {e.stderr}")  # Print the error message
+        sys.exit(1)  # Exit the program with a non-zero status
 
-        # Push the repository to GitHub
-        subprocess.run(['git', 'remote', 'add', 'github', github_clone_url], check=True)
-        subprocess.run(['git', 'push', '--mirror', 'github'], check=True)
-        print(f'Successfully synced {repo_name} to GitHub.')
-    except subprocess.CalledProcessError:
-        print(f'Error syncing {repo_name}. Retrying...')
-        return False  # Indicate failure
-    finally:
-        # Clean up local repo
-        subprocess.run(['rm', '-rf', repo_name])
+def cleanup(repo_name):
+    """Clean up any previous directories."""
+    print(f"Cleaning up previous directory for {repo_name}...")  # Indicate cleanup process
+    if os.path.exists(f"{WORK_DIR}/{repo_name}"):  # Check if the directory exists
+        subprocess.run(["rm", "-rf", f"{WORK_DIR}/{repo_name}"])  # Remove the directory and its contents
 
+def sync_repo(gitlab_repo, github_repo):
+    """Clone from GitLab and push to GitHub."""
+    repo_name = gitlab_repo.split('/')[-1].replace('.git', '')  # Extract repository name from the URL
+    cleanup(repo_name)  # Clean up previous directory for the repository
+
+    # Step 1: Clone from GitLab
+    print(f"Cloning {gitlab_repo} from GitLab...")  # Indicate the cloning process
+    run_command([
+        "git", "clone", f"https://oauth2:{GITLAB_TOKEN}@{gitlab_repo}",  # Clone the repository using the GitLab token
+        f"{WORK_DIR}/{repo_name}"  # Specify the target directory for the clone
+    ])
+
+    # Step 2: Navigate to the repository directory
+    os.chdir(f"{WORK_DIR}/{repo_name}")  # Change the working directory to the cloned repository
+
+    # Step 3: Add GitHub as a remote
+    print(f"Adding GitHub as a remote for {repo_name}...")  # Indicate adding GitHub as a remote
+    run_command([
+        "git", "remote", "add", "github", f"https://oauth2:{GH_TOKEN}@{github_repo}"  # Add the GitHub remote using the token
+    ])
+
+    # Step 4: Force push to GitHub
+    print(f"Forcing push to GitHub for {repo_name}...")  # Indicate the force push operation
+    run_command(["git", "push", "--force", "github", "main"])  # Force push the main branch to GitHub
+
+    print(f"Synchronization complete for {repo_name}!")  # Indicate completion of synchronization
 
 def main():
-    """Main function to read repository URLs and sync them."""
-    with open(REPO_FILE, 'r') as file:
-        repos = [line.strip().split(',') for line in file.readlines()]
+    # Create the working directory if it doesn't exist
+    os.makedirs(WORK_DIR, exist_ok=True)  # Create the working directory if it does not already exist
 
-    failed_repos = []
+    # Read the list of repositories from the file
+    with open('repos.txt', 'r') as f:  # Open the file containing the repository URLs
+        repos = f.readlines()  # Read all lines from the file
 
-    for gitlab_url, github_url in repos:
-        success = False
-        for attempt in range(3):  # Retry up to 3 times
-            if sync_repository(gitlab_url.strip(), github_url.strip()):
-                success = True
-                break  # Exit retry loop if successful
-            time.sleep(2)  # Wait before retrying
-
-        if not success:
-            failed_repos.append(github_url.strip())
-
-    # Log failed repositories
-    if failed_repos:
-        with open(FAILED_REPOS_FILE, 'w') as file:
-            for repo in failed_repos:
-                file.write(f'{repo}\n')
-        print(f'Failed to sync {len(failed_repos)} repositories. See {FAILED_REPOS_FILE} for details.')
-
+    # Iterate through each line in the file
+    for line in repos:
+        gitlab_repo, github_repo = line.strip().split(',')  # Split the line into GitLab and GitHub repo URLs
+        sync_repo(gitlab_repo, github_repo)  # Sync the repositories
 
 if __name__ == "__main__":
-    main()
+    main()  # Run the main function if the script is executed directly
