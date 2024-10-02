@@ -1,45 +1,30 @@
-name: Sync GitLab to GitHub
+name: Sync Repositories
 
 on:
-  schedule:
-    - cron: '0 */6 * * *'  # Runs every 6 hours
-  workflow_dispatch:  # Allows manual triggering of the workflow
+  push:
+    branches:
+      - main  # Change to your default branch if needed
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest  # Use the latest Ubuntu runner
 
     steps:
-    - name: Checkout the GitHub repository
-      uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v2  # Check out the repository
 
-    - name: Sync Repositories
-      run: |
-        # GitLab and GitHub tokens (hardcoded)
-        GITLAB_TOKEN="glpat-o2rV5ywVfSLMcvSSqEsx"  # Your GitLab token
-        GITHUB_TOKEN="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"  # Your GitHub token
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'  # Specify the Python version
 
-        # Define the list of repositories
-        REPOS=(
-          "https://gitlab.com/abhishekxrana/jenkins.git"  # GitLab repository
-          "https://github.com/abhishekrana1703/jenkins.git"  # GitHub repository
-        )
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip  # Upgrade pip
+          # If you have dependencies, list them here (e.g., pip install -r requirements.txt)
 
-        for REPO in "${REPOS[@]}"; do
-          REPO_NAME=$(basename "$REPO" .git)
-          echo "Syncing from GitLab: $REPO to GitHub"
-
-          # Clone the GitLab repository
-          git clone --mirror "$REPO" "$REPO_NAME.git"
-          cd "$REPO_NAME.git"
-
-          # Set up GitHub remote with authentication
-          git remote add github "https://${GITHUB_TOKEN}@github.com/abhishekrana1703/$REPO_NAME.git"
-          git push --mirror github
-
-          # Cleanup
-          cd ..
-          rm -rf "$REPO_NAME.git"
-
-          echo "Sync complete for $REPO"
-        done
+      - name: Run sync script
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}  # Use secrets for sensitive information
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Use secrets for sensitive information
+        run: python path/to/your_script.py  # Update the path to your script
