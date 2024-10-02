@@ -4,8 +4,8 @@ import concurrent.futures
 import time
 
 # GitLab and GitHub tokens for authentication
-GITLAB_TOKEN = 'your_gitlab_token'
-GITHUB_TOKEN = os.getenv('GH_TOKEN')  # You can set GH_TOKEN as an environment variable
+GITLAB_TOKEN = os.getenv('GITLAB_TOKEN')  # GitLab token should be passed as environment variable
+GITHUB_TOKEN = os.getenv('GH_TOKEN')  # GitHub token should be passed as environment variable
 
 # File containing GitLab and GitHub repository pairs
 REPO_FILE = 'repos.txt'
@@ -23,20 +23,23 @@ def sync_repo(gitlab_url, github_url, attempt=1):
     repo_name = gitlab_url.split('/')[-1].replace('.git', '')
     
     try:
-        # Clone GitLab repository
+        # Clone GitLab repository with token
         if os.path.exists(repo_name):
             subprocess.run(['rm', '-rf', repo_name])
 
+        gitlab_url_with_token = gitlab_url.replace(
+            'https://gitlab.com', f'https://oauth2:{GITLAB_TOKEN}@gitlab.com'
+        )
+
         print(f"Cloning {repo_name} from GitLab (Attempt {attempt})...")
-        subprocess.run(['git', 'clone', gitlab_url], check=True)
+        subprocess.run(['git', 'clone', gitlab_url_with_token], check=True)
 
         os.chdir(repo_name)
 
-        # Modify GitHub URL to include GitHub token
+        # Modify GitHub URL to include the GitHub token for authentication
         github_url_with_token = github_url.replace(
-        https://github.com', f'https://{GH_TOKEN}:x-oauth-basic@github.com'
+            'https://github.com', f'https://{GITHUB_TOKEN}:x-oauth-basic@github.com'
         )
-
 
         # Add GitHub remote with token for authentication
         subprocess.run(['git', 'remote', 'add', 'github', github_url_with_token], check=True)
