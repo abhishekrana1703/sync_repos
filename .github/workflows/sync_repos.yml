@@ -1,35 +1,45 @@
-name: Sync Repos
+name: Sync GitLab to GitHub
 
 on:
-  push:
-    branches:
-      - main  # Change to the branch you want to trigger on
+  schedule:
+    - cron: '0 */6 * * *'  # Runs every 6 hours
+  workflow_dispatch:  # Allows manual triggering of the workflow
 
 jobs:
   sync:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
+    - name: Checkout the GitHub repository
+      uses: actions/checkout@v2
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.8'  # Specify the Python version you want to use
+    - name: Sync Repositories
+      run: |
+        # GitLab and GitHub tokens (hardcoded)
+        GITLAB_TOKEN="glpat-o2rV5ywVfSLMcvSSqEsx"  # Your GitLab token
+        GITHUB_TOKEN="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"  # Your GitHub token
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests  # Install any additional dependencies your script may require
+        # Define the list of repositories
+        REPOS=(
+          "https://gitlab.com/abhishekxrana/jenkins.git"  # GitLab repository
+          "https://github.com/abhishekrana1703/jenkins.git"  # GitHub repository
+        )
 
-      - name: Run sync script
-        run: |
-          python sync_repos.py  # Adjust the filename if your script has a different name
-        
-      - name: Check for failed syncs
-        run: |
-          if [ -f failed_repos.txt ]; then
-            echo "Some repositories failed to sync. See 'failed_repos.txt' for details."
-            exit 1
-          fi
+        for REPO in "${REPOS[@]}"; do
+          REPO_NAME=$(basename "$REPO" .git)
+          echo "Syncing from GitLab: $REPO to GitHub"
+
+          # Clone the GitLab repository
+          git clone --mirror "$REPO" "$REPO_NAME.git"
+          cd "$REPO_NAME.git"
+
+          # Set up GitHub remote with authentication
+          git remote add github "https://${GITHUB_TOKEN}@github.com/abhishekrana1703/$REPO_NAME.git"
+          git push --mirror github
+
+          # Cleanup
+          cd ..
+          rm -rf "$REPO_NAME.git"
+
+          echo "Sync complete for $REPO"
+        done
