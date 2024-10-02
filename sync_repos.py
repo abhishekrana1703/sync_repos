@@ -1,100 +1,67 @@
 import os
 import subprocess
-import concurrent.futures
 import time
 
-# Hardcoded GitLab and GitHub tokens
-GITLAB_TOKEN = "glpat-o2rV5ywVfSLMcvSSqEsx"  # Hardcoded GitLab token
-GITHUB_TOKEN = "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"  # Hardcoded GitHub token
+# Hardcoded tokens
+GITLAB_TOKEN = "glpat-o2rV5ywVfSLMcvSSqEsx"  # Your GitLab token
+GITHUB_TOKEN = "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"  # Your GitHub token
 
-# File containing GitLab and GitHub repository pairs
+# File containing repository URLs
 REPO_FILE = 'repos.txt'
+FAILED_REPOS_FILE = 'failed_repos.txt'
 
-# Max retries for failed syncs
-MAX_RETRIES = 3
 
-# Max workers for parallel execution (adjust based on your system’s resources)
-MAX_WORKERS = 10
+def sync_repository(gitlab_url, github_url):
+    """Sync a single repository from GitLab to GitHub."""
+    repo_name = github_url.split('/')[-1]
+    print(f'Cloning {repo_name} from GitLab...')
 
-# Logging failed syncs
-failed_repos = []
+    # Construct GitLab and GitHub URLs with tokens for authentication
+    gitlab_clone_url = f'https://oauth2:{GITLAB_TOKEN}@{gitlab_url.split("https://")[1]}'
+    github_clone_url = f'https://{GITHUB_TOKEN}:x-oauth-basic@{github_url}'
 
-def sync_repo(gitlab_url, github_url, attempt=1):
-    repo_name = gitlab_url.split('/')[-1].replace('.git', '')
-    
+    # Clone the repository from GitLab
     try:
-        # Clone GitLab repository with token
-        if os.path.exists(repo_name):
-            subprocess.run(['rm', '-rf', repo_name])
+        subprocess.run(['git', 'clone', gitlab_clone_url, repo_name], check=True)
+        print(f'Fetching from GitLab and pushing to GitHub for {repo_name}...')
 
-        gitlab_url_with_token = gitlab_url.replace(
-            'https://gitlab.com', f'https://oauth2:{GITLAB_TOKEN}@gitlab.com'
-        )
-
-        print(f"Cloning {repo_name} from GitLab (Attempt {attempt})...")
-        subprocess.run(['git', 'clone', gitlab_url_with_token], check=True)
-
-        os.chdir(repo_name)
-
-        # Modify GitHub URL to include the hardcoded GitHub token for authentication
-        github_url_with_token = github_url.replace(
-            'https://github.com', f'https://{GITHUB_TOKEN}:x-oauth-basic@github.com'
-        )
-
-        # Add GitHub remote with token for authentication
-        subprocess.run(['git', 'remote', 'add', 'github', github_url_with_token], check=True)
-
-        # Fetch and sync
-        print(f"Fetching from GitLab and pushing to GitHub for {repo_name}...")
-        subprocess.run(['git', 'fetch', 'origin'], check=True)
+        # Push the repository to GitHub
+        subprocess.run(['git', 'remote', 'add', 'github', github_clone_url], check=True)
         subprocess.run(['git', 'push', '--mirror', 'github'], check=True)
-
-        # Clean up
-        os.chdir('..')
-        subprocess.run(['rm', '-rf', repo_name])
-        print(f"Synced {repo_name} successfully!\n")
-    except subprocess.CalledProcessError as e:
-        print(f"Error syncing {repo_name} (Attempt {attempt}): {str(e)}")
-        
-        if attempt < MAX_RETRIES:
-            print(f"Retrying {repo_name}...")
-            time.sleep(5)  # Add a short delay before retry
-            sync_repo(gitlab_url, github_url, attempt + 1)
-        else:
-            print(f"Failed to sync {repo_name} after {MAX_RETRIES} attempts.")
-            failed_repos.append(f"{gitlab_url},{github_url}")
+        print(f'Successfully synced {repo_name} to GitHub.')
+    except subprocess.CalledProcessError:
+        print(f'Error syncing {repo_name}. Retrying...')
+        return False  # Indicate failure
     finally:
-        if os.path.exists(repo_name):
-            os.chdir('..')
-            subprocess.run(['rm', '-rf', repo_name])
+        # Clean up local repo
+        subprocess.run(['rm', '-rf', repo_name])
 
 
 def main():
-    # Read repo file
-    with open(REPO_FILE, 'r') as f:
-        repos = f.readlines()
+    """Main function to read repository URLs and sync them."""
+    with open(REPO_FILE, 'r') as file:
+        repos = [line.strip().split(',') for line in file.readlines()]
 
-    repo_pairs = [(repo.strip().split(',')[0], repo.strip().split(',')[1]) for repo in repos]
+    failed_repos = []
 
-    # Use ThreadPoolExecutor for parallel processing
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = [executor.submit(sync_repo, gitlab_url, github_url) for gitlab_url, github_url in repo_pairs]
+    for gitlab_url, github_url in repos:
+        success = False
+        for attempt in range(3):  # Retry up to 3 times
+            if sync_repository(gitlab_url.strip(), github_url.strip()):
+                success = True
+                break  # Exit retry loop if successful
+            time.sleep(2)  # Wait before retrying
 
-        # Wait for all futures to complete
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                future.result()  # This will raise an exception if sync_repo raised one
-            except Exception as exc:
-                print(f"Generated an exception: {exc}")
+        if not success:
+            failed_repos.append(github_url.strip())
 
     # Log failed repositories
     if failed_repos:
-        with open('failed_repos.txt', 'w') as fail_log:
-            fail_log.write("\n".join(failed_repos))
-        print(f"{len(failed_repos)} repositories failed to sync. See 'failed_repos.txt' for details.")
-    else:
-        print("All repositories synced successfully!")
+        with open(FAILED_REPOS_FILE, 'w') as file:
+            for repo in failed_repos:
+                file.write(f'{repo}\n')
+        print(f'Failed to sync {len(failed_repos)} repositories. See {FAILED_REPOS_FILE} for details.')
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
