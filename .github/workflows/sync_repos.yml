@@ -1,39 +1,35 @@
-name: Repository Sync Job
+name: Sync Repos
 
 on:
-  schedule:
-    - cron: "0 */6 * * *"  # Runs every 6 hours
-  workflow_dispatch:  # Allows manual triggering
+  push:
+    branches:
+      - main  # Change to the branch you want to trigger on
 
 jobs:
-  sync_repos:
+  sync:
     runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-        
-      - name: Set Up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
 
-      - name: Install Dependencies
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'  # Specify the Python version you want to use
+
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install requests  # Install any additional dependencies your script may require
 
-      - name: Run Repository Sync Script
+      - name: Run sync script
         run: |
-          python sync_repos.py
-        env:
-          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-    
-      - name: Upload Logs
-        if: always()  # Ensure logs are uploaded even if the sync fails
-        uses: actions/upload-artifact@v3
-        with:
-          name: sync-logs
-          path: |
-            *.log       # Upload all log files
-            failed_repos.txt  # Upload the failed repositories file if it exists
+          python sync_repos.py  # Adjust the filename if your script has a different name
+        
+      - name: Check for failed syncs
+        run: |
+          if [ -f failed_repos.txt ]; then
+            echo "Some repositories failed to sync. See 'failed_repos.txt' for details."
+            exit 1
+          fi
