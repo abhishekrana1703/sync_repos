@@ -27,4 +27,4 @@ jobs:
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}  # Use secrets for sensitive information
           GH_TOKEN: ${{ secrets.GH_TOKEN }}  # Use secrets for sensitive information
-        run: python path/to/your_script.py  # Update the path to your script
+        run: python3 sync_repos.py  # Update the path to your script
