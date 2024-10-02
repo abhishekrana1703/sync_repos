@@ -34,8 +34,9 @@ def sync_repo(gitlab_url, github_url, attempt=1):
 
         # Modify GitHub URL to include GitHub token
         github_url_with_token = github_url.replace(
-            'https://github.com', f'https://{GITHUB_TOKEN}:x-oauth-basic@github.com'
+        https://github.com', f'https://{GITHUB_TOKEN}:x-oauth-basic@github.com'
         )
+
 
         # Add GitHub remote with token for authentication
         subprocess.run(['git', 'remote', 'add', 'github', github_url_with_token], check=True)
