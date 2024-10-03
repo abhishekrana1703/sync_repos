@@ -1,72 +1,118 @@
-import os  # Import the os module for operating system-related functionality
-import subprocess  # Import the subprocess module to execute shell commands
-import sys  # Import the sys module for system-specific parameters and functions
+import os
+import subprocess
+import requests
+import logging
+from datetime import datetime
 
-# Set GitLab and GitHub tokens
-GITLAB_TOKEN = "glpat-o2rV5ywVfSLMcvSSqEsx"  # Token for GitLab authentication
-GH_TOKEN = "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"  # Token for GitHub authentication
+# Constants
+GITLAB_TOKEN = "glpat-o2rV5ywVfSLMcvSSqEsx"
+GITHUB_TOKEN = "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"
+REPOS_FILE = "repos.txt"
+LOG_DIR = "sync_logs"
 
-# Working directory to clone the repositories
-WORK_DIR = "/tmp/sync_repos"  # Directory where repositories will be cloned
+# Set up logging
+if not os.path.exists(LOG_DIR):
+    os.makedirs(LOG_DIR)
 
-def run_command(command):
-    """Run a shell command and return the output."""
-    print(f"Running command: {' '.join(command)}")  # Print the command being run
-    try:
-        # Execute the command, capturing standard output and errors
-        result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        return result.stdout  # Return the standard output from the command
-    except subprocess.CalledProcessError as e:
-        # Handle errors in command execution
-        print(f"Command failed: {e.cmd}")  # Print the command that failed
-        print(f"Error: {e.stderr}")  # Print the error message
-        sys.exit(1)  # Exit the program with a non-zero status
+logging.basicConfig(filename=os.path.join(LOG_DIR, f"sync_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"),
+                    level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
-def cleanup(repo_name):
-    """Clean up any previous directories."""
-    print(f"Cleaning up previous directory for {repo_name}...")  # Indicate cleanup process
-    if os.path.exists(f"{WORK_DIR}/{repo_name}"):  # Check if the directory exists
-        subprocess.run(["rm", "-rf", f"{WORK_DIR}/{repo_name}"])  # Remove the directory and its contents
+def validate_token(token, service):
+    """Check if the token is valid for the given service."""
+    if service == 'gitlab':
+        url = "https://gitlab.com/api/v4/user"
+        headers = {'Private-Token': token}
+    elif service == 'github':
+        url = "https://api.github.com/user"
+        headers = {'Authorization': f'token {token}'}
+    else:
+        logging.error("Unsupported service for token validation.")
+        return False
 
-def sync_repo(gitlab_repo, github_repo):
-    """Clone from GitLab and push to GitHub."""
-    repo_name = gitlab_repo.split('/')[-1].replace('.git', '')  # Extract repository name from the URL
-    cleanup(repo_name)  # Clean up previous directory for the repository
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        logging.info(f"{service.capitalize()} token is valid.")
+        return True
+    else:
+        logging.error(f"{service.capitalize()} token is invalid: {response.text}")
+        return False
 
-    # Step 1: Clone from GitLab
-    print(f"Cloning {gitlab_repo} from GitLab...")  # Indicate the cloning process
-    run_command([
-        "git", "clone", f"https://oauth2:{GITLAB_TOKEN}@{gitlab_repo}",  # Clone the repository using the GitLab token
-        f"{WORK_DIR}/{repo_name}"  # Specify the target directory for the clone
-    ])
+def get_repo_list(file_path):
+    """Read the repository pairs from the repos.txt file."""
+    with open(file_path, 'r') as file:
+        return [line.strip().split(',') for line in file.readlines()]
 
-    # Step 2: Navigate to the repository directory
-    os.chdir(f"{WORK_DIR}/{repo_name}")  # Change the working directory to the cloned repository
+def get_gitlab_project_id(gitlab_repo):
+    """Retrieve the project ID from the GitLab repository."""
+    project_name = gitlab_repo.split('/')[-1].replace('.git', '')
+    url = f"https://gitlab.com/api/v4/projects/{gitlab_repo.replace('/', '%2F')}"  # URL-encode the path
+    headers = {'Private-Token': GITLAB_TOKEN}
+    
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code == 200:
+        return response.json()['id']  # Return the project ID
+    else:
+        logging.error(f"Failed to fetch project ID from GitLab repo {gitlab_repo}, status code: {response.status_code}, response: {response.text}")
+        return None
 
-    # Step 3: Add GitHub as a remote
-    print(f"Adding GitHub as a remote for {repo_name}...")  # Indicate adding GitHub as a remote
-    run_command([
-        "git", "remote", "add", "github", f"https://oauth2:{GH_TOKEN}@{github_repo}"  # Add the GitHub remote using the token
-    ])
+def has_new_commits(gitlab_repo):
+    """Check for new commits in the GitLab repository."""
+    project_id = get_gitlab_project_id(gitlab_repo)
+    
+    if project_id is None:
+        return False, None  # Project ID retrieval failed
 
-    # Step 4: Force push to GitHub
-    print(f"Forcing push to GitHub for {repo_name}...")  # Indicate the force push operation
-    run_command(["git", "push", "--force", "github", "main"])  # Force push the main branch to GitHub
+    url = f"https://gitlab.com/api/v4/projects/{project_id}/repository/commits"
+    headers = {'Private-Token': GITLAB_TOKEN}
+    response = requests.get(url, headers=headers)
 
-    print(f"Synchronization complete for {repo_name}!")  # Indicate completion of synchronization
+    if response.status_code == 200:
+        commits = response.json()
+        return len(commits) > 0, commits[0]['id'] if commits else None
+    else:
+        logging.error(f"Error checking commits for {gitlab_repo}: {response.text}")
+        return False, None
+
+def sync_commit(gitlab_repo, github_repo):
+    """Sync the latest commit from GitLab to GitHub."""
+    # Clone the GitLab repository
+    subprocess.run(["git", "clone", f"https://{GITLAB_TOKEN}:x-oauth-basic@gitlab.com/{gitlab_repo}.git"], check=True)
+
+    # Change directory to the cloned repository
+    repo_name = gitlab_repo.split('/')[-1]
+    os.chdir(repo_name)
+
+    # Push to GitHub
+    subprocess.run(["git", "push", f"https://{GITHUB_TOKEN}:x-oauth-basic@{github_repo}"], check=True)
+
+    # Change back to the previous directory
+    os.chdir('..')
+
+    # Remove the cloned repository
+    subprocess.run(["rm", "-rf", repo_name])
 
 def main():
-    # Create the working directory if it doesn't exist
-    os.makedirs(WORK_DIR, exist_ok=True)  # Create the working directory if it does not already exist
+    # Validate tokens
+    if not validate_token(GITLAB_TOKEN, 'gitlab') or not validate_token(GITHUB_TOKEN, 'github'):
+        return
 
-    # Read the list of repositories from the file
-    with open('repos.txt', 'r') as f:  # Open the file containing the repository URLs
-        repos = f.readlines()  # Read all lines from the file
+    # Get the list of repositories
+    repo_pairs = get_repo_list(REPOS_FILE)
+    logging.info(f"Found {len(repo_pairs)} repositories to sync.")
 
-    # Iterate through each line in the file
-    for line in repos:
-        gitlab_repo, github_repo = line.strip().split(',')  # Split the line into GitLab and GitHub repo URLs
-        sync_repo(gitlab_repo, github_repo)  # Sync the repositories
+    for gitlab_repo, github_repo in repo_pairs:
+        logging.info(f"Checking for new commits in {gitlab_repo}...")
+
+        new_commits, latest_commit_id = has_new_commits(gitlab_repo)
+
+        if new_commits:
+            logging.info(f"New commits found in {gitlab_repo}. Syncing to {github_repo}...")
+            sync_commit(gitlab_repo, github_repo)
+            logging.info(f"Successfully synced {gitlab_repo} to {github_repo}.")
+        else:
+            logging.info(f"No new commits in {gitlab_repo}.")
 
 if __name__ == "__main__":
-    main()  # Run the main function if the script is executed directly
+    main()
